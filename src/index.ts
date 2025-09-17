@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { Server, Tool, Resource, ListResourcesRequest, CallToolRequest, ListToolsRequest } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import http from 'http';
 import SpotifyWebApi from 'spotify-web-api-node';
 
 const name = process.env.MCP_SERVER_NAME || 'spotify-mcp-server';
@@ -124,6 +126,51 @@ const server = new Server({ name, version: '0.1.0' }, {
   }
 });
 
-const transport = new StdioServerTransport();
+// Initialize transports: stdio (for CLI clients) and HTTP SSE (for web clients like Poke)
+const stdioTransport = new StdioServerTransport();
+server.connect(stdioTransport);
 
-server.connect(transport);
+const port = Number(process.env.MCP_SERVER_PORT) || 7312;
+const ssePath = process.env.MCP_SSE_PATH || '/sse';
+
+const sseTransport = new SSEServerTransport();
+server.connect(sseTransport);
+
+const httpServer = http.createServer((req, res) => {
+  // Basic CORS for browsers connecting from other origins
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && req.url && (req.url === ssePath || req.url.startsWith(ssePath + '?'))) {
+    // Delegate SSE handshake/stream to the MCP SSE transport
+    // @ts-ignore - handleRequest is provided by the transport implementation
+    if (typeof (sseTransport as any).handleRequest === 'function') {
+      (sseTransport as any).handleRequest(req, res);
+      return;
+    }
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('SSE transport does not expose handleRequest');
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ name, version: '0.1.0', transport: 'sse', ssePath }));
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not found');
+});
+
+httpServer.listen(port, '0.0.0.0', () => {
+  // eslint-disable-next-line no-console
+  console.log(`[MCP] SSE listening at http://localhost:${port}${ssePath}`);
+});

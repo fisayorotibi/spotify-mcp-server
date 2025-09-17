@@ -25,7 +25,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `dotenv/config` is imported at startup to auto-load `.env`.
 
 - MCP server surface (`src/index.ts`)
-  - Transport: `StdioServerTransport` (process communicates over stdio when spawned by an MCP client).
+  - Transports:
+    - `StdioServerTransport` for local CLI clients.
+    - `SSEServerTransport` exposed over HTTP for web clients (e.g., Poke) at `http://localhost:<MCP_SERVER_PORT><MCP_SSE_PATH>`.
   - Handlers: `listTools`, `listResources`, `callTool` (switch on tool name), `readResource` (switch on resource URI).
   - Tools
     - `spotify.search` — params: `q` (string), `type` (`track|artist|album`), `limit` (1–50, default 10). Returns the JSON body from the corresponding `spotify-web-api-node` search call.
@@ -45,7 +47,8 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `SPOTIFY_REDIRECT_URI`
 - `SPOTIFY_SCOPES` (space-separated)
 - `MCP_SERVER_NAME` (defaults to `spotify-mcp-server`)
-- `MCP_SERVER_PORT` (present in example but not used by the current stdio transport)
+- `MCP_SERVER_PORT` (SSE HTTP server port; default 7312)
+- `MCP_SSE_PATH` (optional; default `/sse`)
 
 ## Extending the server
 - Add a tool: extend the `tools` array and implement it in the `callTool` switch.
